@@ -5,6 +5,7 @@ import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.data.database.models.Track
 import eu.kanade.tachiyomi.data.track.BaseTracker
 import eu.kanade.tachiyomi.data.track.DeletableTracker
+import eu.kanade.tachiyomi.data.track.TwoWayTracker
 import eu.kanade.tachiyomi.data.track.kitsu.dto.KitsuOAuth
 import eu.kanade.tachiyomi.data.track.model.TrackSearch
 import kotlinx.collections.immutable.ImmutableList
@@ -15,7 +16,7 @@ import uy.kohesive.injekt.injectLazy
 import java.text.DecimalFormat
 import tachiyomi.domain.track.model.Track as DomainTrack
 
-class Kitsu(id: Long) : BaseTracker(id, "Kitsu"), DeletableTracker {
+class Kitsu(id: Long) : BaseTracker(id, "Kitsu"), DeletableTracker, TwoWayTracker {
 
     companion object {
         const val READING = 1L
@@ -28,6 +29,8 @@ class Kitsu(id: Long) : BaseTracker(id, "Kitsu"), DeletableTracker {
     override val supportsReadingDates: Boolean = true
 
     override val supportsPrivateTracking: Boolean = true
+
+    override val twoWaySyncIntervalMillis: Long = TwoWayTracker.SIMPLE_AUTO_SYNC_INTERVAL_MS
 
     private val json: Json by injectLazy()
 
@@ -120,9 +123,15 @@ class Kitsu(id: Long) : BaseTracker(id, "Kitsu"), DeletableTracker {
     }
 
     override suspend fun refresh(track: Track): Track {
-        val remoteTrack = api.getLibManga(track)
+        val remoteTrack = if ((track.library_id ?: 0L) > 0L) {
+            api.getLibManga(track)
+        } else {
+            api.findLibManga(track, getUserId()) ?: api.getLibManga(track)
+        }
         track.copyPersonalFrom(remoteTrack)
         track.total_chapters = remoteTrack.total_chapters
+        track.library_id = remoteTrack.library_id
+        track.remote_id = remoteTrack.remote_id
         return track
     }
 

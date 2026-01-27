@@ -24,7 +24,7 @@ android {
     namespace = "eu.kanade.tachiyomi"
 
     defaultConfig {
-        applicationId = "app.mihon"
+        applicationId = "app.mihon_fork_nolanblew"
 
         versionCode = 18
         versionName = "0.19.4"
@@ -38,6 +38,17 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        create("release") {
+            storeFile = file(project.findProperty("MY_KEYSTORE_PATH") ?: "../mihon-nolan-fork-release.keystore")
+            storePassword = project.findProperty("MY_KEYSTORE_PASSWORD") as String?
+            keyAlias = project.findProperty("MY_KEY_ALIAS") as String?
+            keyPassword = project.findProperty("MY_KEY_PASSWORD") as String?
+            enableV1Signing = true
+            enableV2Signing = true
+        }
+    }
+
     buildTypes {
         val debug by getting {
             applicationIdSuffix = ".dev"
@@ -49,6 +60,7 @@ android {
             isShrinkResources = Config.enableCodeShrink
 
             proguardFiles("proguard-android-optimize.txt", "proguard-rules.pro")
+            signingConfig = signingConfigs.getByName("release")
 
             buildConfigField("String", "BUILD_TIME", "\"${getBuildTime(useLastCommitTime = true)}\"")
         }

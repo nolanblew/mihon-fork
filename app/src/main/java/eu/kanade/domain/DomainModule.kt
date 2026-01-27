@@ -24,6 +24,7 @@ import eu.kanade.domain.source.interactor.ToggleSourcePin
 import eu.kanade.domain.track.interactor.AddTracks
 import eu.kanade.domain.track.interactor.RefreshTracks
 import eu.kanade.domain.track.interactor.SyncChapterProgressWithTrack
+import eu.kanade.domain.track.interactor.SyncTwoWayTracking
 import eu.kanade.domain.track.interactor.TrackChapter
 import mihon.data.repository.ExtensionRepoRepositoryImpl
 import mihon.domain.chapter.interactor.FilterChaptersForDownload
@@ -154,6 +155,7 @@ class DomainModule : InjektModule {
         addFactory { GetTracks(get()) }
         addFactory { InsertTrack(get()) }
         addFactory { SyncChapterProgressWithTrack(get(), get(), get()) }
+        addFactory { SyncTwoWayTracking(get(), get(), get(), get(), get(), get()) }
 
         addSingletonFactory<ChapterRepository> { ChapterRepositoryImpl(get()) }
         addFactory { GetChapter(get()) }

@@ -21,6 +21,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -39,7 +40,9 @@ import cafe.adriel.voyager.navigator.Navigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import dev.icerock.moko.resources.StringResource
 import eu.kanade.domain.track.interactor.RefreshTracks
+import eu.kanade.domain.track.interactor.SyncTwoWayTracking
 import eu.kanade.domain.track.model.toDbTrack
+import eu.kanade.domain.track.service.TrackPreferences
 import eu.kanade.domain.ui.UiPreferences
 import eu.kanade.presentation.track.TrackChapterSelector
 import eu.kanade.presentation.track.TrackDateSelector
@@ -174,6 +177,14 @@ data class TrackInfoDialogHomeScreen(
             onCopyLink = { context.copyTrackerLink(it) },
             onTogglePrivate = screenModel::togglePrivate,
         )
+        val pendingTrackId = state.pendingProgressTrackerId
+        LaunchedEffect(pendingTrackId) {
+            val trackId = pendingTrackId ?: return@LaunchedEffect
+            val trackItem = state.trackItems.firstOrNull { it.tracker.id == trackId } ?: return@LaunchedEffect
+            val track = trackItem.track ?: return@LaunchedEffect
+            screenModel.consumePendingProgressDialog()
+            navigator.push(TrackChapterSelectorScreen(track = track, serviceId = trackItem.tracker.id))
+        }
     }
 
     /**
@@ -199,6 +210,9 @@ data class TrackInfoDialogHomeScreen(
         private val getTracks: GetTracks = Injekt.get(),
     ) : StateScreenModel<Model.State>(State()) {
 
+        private var trackedTrackerIds: Set<Long> = emptySet()
+        private var hasInitializedTrackedIds = false
+
         init {
             screenModelScope.launch {
                 refreshTrackers()
@@ -209,7 +223,7 @@ data class TrackInfoDialogHomeScreen(
                     .catch { logcat(LogPriority.ERROR, it) }
                     .distinctUntilChanged()
                     .map { it.mapToTrackItem() }
-                    .collectLatest { trackItems -> mutableState.update { it.copy(trackItems = trackItems) } }
+                    .collectLatest { trackItems -> updateTrackItems(trackItems) }
             }
         }
 
@@ -254,6 +268,10 @@ data class TrackInfoDialogHomeScreen(
             }
         }
 
+        fun consumePendingProgressDialog() {
+            mutableState.update { it.copy(pendingProgressTrackerId = null) }
+        }
+
         private fun List<Track>.mapToTrackItem(): List<TrackItem> {
             val loggedInTrackers = Injekt.get<TrackerManager>().loggedInTrackers()
             val source = Injekt.get<SourceManager>().getOrStub(sourceId)
@@ -264,9 +282,34 @@ data class TrackInfoDialogHomeScreen(
                 .filter { (it.tracker as? EnhancedTracker)?.accept(source) ?: true }
         }
 
+        private fun updateTrackItems(trackItems: List<TrackItem>) {
+            val currentTrackedIds = trackItems
+                .filter { it.track != null }
+                .map { it.tracker.id }
+                .toSet()
+            if (!hasInitializedTrackedIds) {
+                hasInitializedTrackedIds = true
+                trackedTrackerIds = currentTrackedIds
+                mutableState.update { it.copy(trackItems = trackItems) }
+                return
+            }
+            val newTrackedIds = currentTrackedIds - trackedTrackerIds
+            trackedTrackerIds = currentTrackedIds
+
+            val existingPending = mutableState.value.pendingProgressTrackerId
+            val pendingProgressId = existingPending ?: newTrackedIds.firstOrNull()
+            mutableState.update {
+                it.copy(
+                    trackItems = trackItems,
+                    pendingProgressTrackerId = pendingProgressId,
+                )
+            }
+        }
+
         @Immutable
         data class State(
             val trackItems: List<TrackItem> = emptyList(),
+            val pendingProgressTrackerId: Long? = null,
         )
     }
 }
@@ -344,6 +387,8 @@ private data class TrackChapterSelectorScreen(
             selection = state.selection,
             onSelectionChange = screenModel::setSelection,
             range = remember { screenModel.getRange() },
+            updateLocalProgress = state.updateLocalProgress,
+            onUpdateLocalProgressChange = screenModel::setUpdateLocalProgress,
             onConfirm = {
                 screenModel.setChapter()
                 navigator.pop()
@@ -355,7 +400,12 @@ private data class TrackChapterSelectorScreen(
     private class Model(
         private val track: Track,
         private val tracker: Tracker,
-    ) : StateScreenModel<Model.State>(State(track.lastChapterRead.toInt())) {
+    ) : StateScreenModel<Model.State>(
+        State(
+            selection = track.lastChapterRead.toInt(),
+            updateLocalProgress = Injekt.get<TrackPreferences>().twoWayTrackingEnabled().get(),
+        ),
+    ) {
 
         fun getRange(): Iterable<Int> {
             val endRange = if (track.totalChapters > 0) {
@@ -370,15 +420,23 @@ private data class TrackChapterSelectorScreen(
             mutableState.update { it.copy(selection = selection) }
         }
 
+        fun setUpdateLocalProgress(update: Boolean) {
+            mutableState.update { it.copy(updateLocalProgress = update) }
+        }
+
         fun setChapter() {
             screenModelScope.launchNonCancellable {
                 tracker.setRemoteLastChapterRead(track.toDbTrack(), state.value.selection)
+                if (state.value.updateLocalProgress) {
+                    Injekt.get<SyncTwoWayTracking>().syncLocalChapters(track.mangaId, state.value.selection)
+                }
             }
         }
 
         @Immutable
         data class State(
             val selection: Int,
+            val updateLocalProgress: Boolean,
         )
     }
 }

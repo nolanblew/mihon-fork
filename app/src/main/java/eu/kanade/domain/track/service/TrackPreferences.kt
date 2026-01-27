@@ -42,4 +42,6 @@ class TrackPreferences(
         "pref_auto_update_manga_on_mark_read",
         AutoTrackState.ALWAYS,
     )
+
+    fun twoWayTrackingEnabled() = preferenceStore.getBoolean("pref_two_way_tracking_enabled", true)
 }

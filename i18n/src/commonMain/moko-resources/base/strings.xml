@@ -533,6 +533,8 @@
     <string name="tracking_guide">Tracking guide</string>
     <string name="pref_auto_update_manga_sync">Update progress after reading</string>
     <string name="pref_auto_update_manga_on_mark_read">Update progress when marked as read</string>
+    <string name="pref_two_way_tracking">Two-way tracking</string>
+    <string name="pref_two_way_tracking_summary">Sync read chapters from supported trackers when refreshing a manga</string>
     <string name="services">Trackers</string>
     <string name="tracking_info">One-way sync to update the chapter progress in external tracker services. Set up tracking for individual entries from their tracking button.</string>
     <string name="enhanced_services">Enhanced trackers</string>
@@ -808,6 +810,8 @@
     <string name="source_unsupported">Source is not supported</string>
     <string name="error_no_match">No match found</string>
     <string name="track_error">%1$s error: %2$s</string>
+    <string name="track_update_failed">Unable to update tracking position</string>
+    <string name="track_update_local_progress">Update read chapters in app</string>
     <string name="track_remove_date_conf_title">Remove date?</string>
     <string name="track_remove_start_date_conf_text">This will remove your previously selected start date from %s</string>
     <string name="track_remove_finish_date_conf_text">This will remove your previously selected finish date from %s</string>

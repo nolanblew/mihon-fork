@@ -25,9 +25,11 @@ import eu.kanade.domain.manga.model.downloadedFilter
 import eu.kanade.domain.manga.model.toSManga
 import eu.kanade.domain.track.interactor.AddTracks
 import eu.kanade.domain.track.interactor.RefreshTracks
+import eu.kanade.domain.track.interactor.SyncTwoWayTracking
 import eu.kanade.domain.track.interactor.TrackChapter
 import eu.kanade.domain.track.model.AutoTrackState
 import eu.kanade.domain.track.service.TrackPreferences
+import eu.kanade.domain.track.store.TwoWayTrackingStore
 import eu.kanade.presentation.manga.DownloadAction
 import eu.kanade.presentation.manga.components.ChapterDownloadAction
 import eu.kanade.presentation.util.formattedMessage
@@ -35,12 +37,14 @@ import eu.kanade.tachiyomi.data.download.DownloadCache
 import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.data.download.model.Download
 import eu.kanade.tachiyomi.data.track.EnhancedTracker
+import eu.kanade.tachiyomi.data.track.TwoWayTracker
 import eu.kanade.tachiyomi.data.track.TrackerManager
 import eu.kanade.tachiyomi.network.HttpException
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
 import eu.kanade.tachiyomi.util.chapter.getNextUnread
 import eu.kanade.tachiyomi.util.removeCovers
+import eu.kanade.tachiyomi.util.system.isOnline
 import eu.kanade.tachiyomi.util.system.toast
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.toImmutableList
@@ -120,6 +124,7 @@ class MangaScreenModel(
     private val setMangaCategories: SetMangaCategories = Injekt.get(),
     private val mangaRepository: MangaRepository = Injekt.get(),
     private val filterChaptersForDownload: FilterChaptersForDownload = Injekt.get(),
+    private val twoWayTrackingStore: TwoWayTrackingStore = Injekt.get(),
     val snackbarHostState: SnackbarHostState = SnackbarHostState(),
 ) : StateScreenModel<MangaScreenModel.State>(State.Loading) {
 
@@ -248,6 +253,7 @@ class MangaScreenModel(
 
             // Initial loading finished
             updateSuccessState { it.copy(isRefreshingData = false) }
+            maybeAutoSyncTwoWayTracking()
         }
     }
 
@@ -259,6 +265,9 @@ class MangaScreenModel(
                 async { fetchChaptersFromSource(manualFetch) },
             )
             fetchFromSourceTasks.awaitAll()
+            if (manualFetch) {
+                syncTwoWayTracking()
+            }
             updateSuccessState { it.copy(isRefreshingData = false) }
         }
     }
@@ -806,6 +815,51 @@ class MangaScreenModel(
                 }
             }
     }
+
+    fun onResume() {
+        screenModelScope.launch {
+            maybeAutoSyncTwoWayTracking()
+        }
+    }
+
+    private suspend fun maybeAutoSyncTwoWayTracking() {
+        if (!trackPreferences.twoWayTrackingEnabled().get()) return
+        if (!context.isOnline()) return
+
+        val trackedServices = getTracks.await(mangaId)
+            .mapNotNull { trackerManager.get(it.trackerId) }
+            .filter { it.isLoggedIn }
+            .filterIsInstance<TwoWayTracker>()
+
+        if (trackedServices.isEmpty()) return
+
+        val intervalMillis = trackedServices.maxOf { it.twoWaySyncIntervalMillis }
+        if (!twoWayTrackingStore.shouldSync(mangaId, intervalMillis)) return
+
+        twoWayTrackingStore.setLastSync(mangaId)
+        syncTwoWayTracking()
+    }
+
+    private suspend fun syncTwoWayTracking(
+        syncTwoWayTracking: SyncTwoWayTracking = Injekt.get(),
+    ) {
+        if (!context.isOnline()) return
+
+        val failures = syncTwoWayTracking.await(mangaId)
+            .filter { it.first != null }
+
+        if (failures.isEmpty()) return
+
+        failures.forEach { (track, e) ->
+            logcat(LogPriority.ERROR, e) {
+                "Failed to sync two-way tracking data mangaId=$mangaId for service ${track!!.id}"
+            }
+        }
+        withUIContext {
+            context.toast(context.stringResource(MR.strings.track_update_failed))
+        }
+    }
+
 
     /**
      * Downloads the given list of chapters with the manager.

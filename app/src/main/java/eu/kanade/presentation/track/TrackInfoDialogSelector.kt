@@ -37,6 +37,7 @@ import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.collections.immutable.toImmutableList
 import tachiyomi.i18n.MR
+import tachiyomi.presentation.core.components.LabeledCheckbox
 import tachiyomi.presentation.core.components.ScrollbarLazyColumn
 import tachiyomi.presentation.core.components.WheelNumberPicker
 import tachiyomi.presentation.core.components.WheelTextPicker
@@ -97,18 +98,31 @@ fun TrackChapterSelector(
     selection: Int,
     onSelectionChange: (Int) -> Unit,
     range: Iterable<Int>,
+    updateLocalProgress: Boolean,
+    onUpdateLocalProgressChange: (Boolean) -> Unit,
     onConfirm: () -> Unit,
     onDismissRequest: () -> Unit,
 ) {
     BaseSelector(
         title = stringResource(MR.strings.chapters),
         content = {
-            WheelNumberPicker(
-                items = range.toImmutableList(),
-                modifier = Modifier.align(Alignment.Center),
-                startIndex = selection,
-                onSelectionChanged = { onSelectionChange(it) },
-            )
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(MaterialTheme.padding.small),
+            ) {
+                WheelNumberPicker(
+                    items = range.toImmutableList(),
+                    modifier = Modifier.align(Alignment.CenterHorizontally),
+                    startIndex = selection,
+                    onSelectionChanged = { onSelectionChange(it) },
+                )
+                LabeledCheckbox(
+                    label = stringResource(MR.strings.track_update_local_progress),
+                    checked = updateLocalProgress,
+                    onCheckedChange = onUpdateLocalProgressChange,
+                )
+            }
         },
         onConfirm = onConfirm,
         onDismissRequest = onDismissRequest,
